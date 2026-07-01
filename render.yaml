@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: shl-assessment-advisor
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt && python catalog/fetch_catalog.py && python catalog/build_index.py"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false  # Set via Render dashboard
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+    healthCheckPath: /health
