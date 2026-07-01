@@ -74,6 +74,29 @@ INTERNAL_TIMEOUT = 25  # seconds — buffer under the 30s API timeout
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+@app.get("/")
+async def root():
+    return {
+        "service": "SHL Assessment Advisor",
+        "version": "1.0.0",
+        "status": "running",
+        "description": "Conversational agent for SHL Individual Test assessment selection.",
+        "endpoints": {
+            "GET /health": "Health check",
+            "POST /chat": "Send conversation messages, receive assessment recommendations",
+        },
+        "docs": "/docs",
+        "example_request": {
+            "url": "POST /chat",
+            "body": {
+                "messages": [
+                    {"role": "user", "content": "I need to hire a senior Java developer"}
+                ]
+            }
+        }
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
