@@ -11,4 +11,15 @@ services:
         sync: false  # Set via Render dashboard
       - key: PYTHON_VERSION
         value: "3.11.0"
+      # Memory optimization for 512MB limit
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: VECLIB_MAXIMUM_THREADS
+        value: "1"
+      - key: NUMEXPR_NUM_THREADS
+        value: "1"
     healthCheckPath: /health
