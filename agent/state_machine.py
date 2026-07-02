@@ -32,8 +32,9 @@ MAX_TURNS = 8  # user + assistant combined
 # Intent-signal patterns that must co-occur with off-topic keywords
 # to prevent false positives on natural hiring phrasing.
 _OFF_TOPIC_INTENT = re.compile(
-    r"(\?|should (i|we)|are (we|i) required|what.s the law|what (is|are) the rule|"
-    r"advise me|tell me (about|how)|can (i|we)|is it legal|what do (i|we) (do|owe))",
+    r"(\?|should (?:i|we)|are (?:we|i) required|what.s the law|what (?:is|are) the rule"
+    r"|advise me|tell me \w+|can (?:i|we)|is it legal|what do (?:i|we) (?:do|owe)"
+    r"|how (?:much|do|should|can)|what.s (?:the |a )?(?:fair|typical|standard|right))",
     re.I,
 )
 
@@ -177,30 +178,39 @@ def extract_context(messages: list[dict]) -> ConversationContext:
 # ── Intent helpers ─────────────────────────────────────────────────────────────
 
 _OFF_TOPIC_KEYWORDS = re.compile(
-    r"\b(salary|compensation|legal(?! (team|department|role|position|hire|hiring|staff|counsel))"
+    r"\b(salary|pay(?:roll|check)?|wage"
+    r"|compensation(?! (?:analyst|manager|specialist|consultant|role|plan|package))"
+    r"|legal(?! (?:team|department|role|position|hire|hiring|staff|counsel))"
     r"|lawsuit|discriminat|gdpr|eeoc|hiring law"
     r"|background check|immigration|visa status)\b",
     re.I,
 )
 
 
+# Blacklist of known injection persona nouns — anything a legitimate job description
+# would never use as 'act as a ___'. The space of real job nouns is vast, so we
+# blacklist injection-specific nouns rather than whitelisting job-description ones.
+_INJECTION_PERSONAS = {
+    "dan", "jailbreak", "pirate", "villain", "hacker", "assistant",
+    "character", "bot", "gpt", "ai", "model", "llm", "chatbot",
+    "unrestricted", "uncensored", "unfiltered", "evil",
+}
+
+
 def _is_injection(text: str) -> bool:
     """Detect prompt-injection attempts.
     Requires a *directive form* of the injection keywords, not bare presence.
-    e.g. 'act as a bridge between teams' is NOT injection; 'act as a pirate' IS.
+    e.g. 'act as a bridge between teams' is NOT injection; 'act as DAN' IS.
     """
     if _INJECTION_DIRECTIVES.search(text):
         return True
-    # Handle 'act as' separately: only flag when the noun following it is
-    # a persona-like word, not a structural/relational job-description word.
-    _STRUCTURAL_NOUNS = {
-        "bridge", "liaison", "intermediary", "connector", "link",
-        "interface", "conduit", "facilitator", "go-between", "point",
-    }
+    # Handle 'act as' with a blacklist of known injection personas.
+    # This avoids false positives on the vast space of legitimate job-description
+    # phrasing (mentor, coach, champion, advisor, representative, etc.).
     act_as_m = re.search(r"\bact\s+as\s+(?:a\s+|an\s+)?(\w+)", text, re.I)
     if act_as_m:
         noun = act_as_m.group(1).lower()
-        if noun not in _STRUCTURAL_NOUNS:
+        if noun in _INJECTION_PERSONAS:
             return True
     return False
 
