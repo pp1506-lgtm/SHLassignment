@@ -103,10 +103,3 @@ Response:
 | Variable | Required | Description |
 |---|---|---|
 | `GEMINI_API_KEY` | Yes | Google Gemini Flash API key (free tier) |
-
-## Deployment (Render)
-
-1. Push to GitHub
-2. Connect repo to Render
-3. Set `GEMINI_API_KEY` in Render dashboard Environment Variables
-4. Deploy — build command runs catalog fetch + index build automatically
