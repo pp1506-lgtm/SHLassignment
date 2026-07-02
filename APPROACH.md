@@ -36,13 +36,13 @@ decide_state()           ← CLARIFY / RECOMMEND / COMPARE / REFUSE / DONE
 
 ## Retrieval Setup
 
-**Hybrid BM25 + FAISS** (α = 0.6 semantic, 0.4 keyword):
+**Hybrid BM25 + FAISS** (α = 0.65 semantic, 0.35 keyword):
 
 - **FAISS** with `all-MiniLM-L6-v2` embeddings captures semantic similarity — "hiring a data analyst" finds "Numerical Reasoning" even without the exact keyword.
 - **BM25** handles exact tech-skill matching — "Java 8" or "Apache Kafka" need exact token overlap that cosine similarity can miss at scale.
-- **Fusion:** scores are independently min-max normalised, then blended. This avoids the scale mismatch between BM25 and cosine scores.
+- **Fusion:** scores are independently min-max normalised, then blended. BM25 uses stopword-filtered tokens to prevent high-frequency noise terms from outranking sparse, meaningful keyword matches.
 
-**Soft/hard filter strategy:** Filters (job level, test type, duration, remote) are first applied strictly. If fewer than `top_k` results remain, job-level filtering is relaxed to avoid empty results. Type-code and remote filters are always enforced.
+**Filter strategy:** Filters are applied as **score multipliers** (always soft) to avoid empty result sets. The one exception is exclusive user phrasing ("only personality tests") where a hard zero-multiplier is applied to non-matching types — accurately reflecting the user's intent without risking empty results on ambiguous queries.
 
 **Search text construction:** Each catalog item's embedding is over `name + description + job_levels + keys` — not description alone. This ensures "Entry-Level Customer Service" items rank well for "contact centre agents" queries without requiring keyword overlap on the description.
 
@@ -100,10 +100,10 @@ States are pure functions of conversation history. Key transitions:
 
 ## Tools Used
 
-- **Gemini 1.5 Flash** (free tier): primary LLM, JSON-mode generation
+- **Gemini 2.5 Flash** (free tier via `google-genai` SDK): primary LLM, JSON-mode generation
 - **sentence-transformers** (`all-MiniLM-L6-v2`): embedding generation
 - **FAISS CPU**: vector similarity search
-- **rank-bm25**: BM25 keyword retrieval
+- **rank-bm25**: BM25 keyword retrieval with stopword filtering
 - **FastAPI + Uvicorn**: API framework
 - **Render free tier**: deployment platform
-- **Antigravity IDE (Claude Sonnet)**: agentic coding assistance for scaffolding
+- **Antigravity IDE**: agentic coding assistance for scaffolding

@@ -46,33 +46,36 @@ PROFESSIONAL_SIGNALS = re.compile(
     re.I,
 )
 
-# Query expansion: map shorthand terms to richer search phrases
+# Query expansion: map shorthand role terms to general domain phrases.
+# These are derived from domain knowledge, not from specific dev traces.
 QUERY_EXPANSIONS = {
-    r"\bjava\b": "Java programming Core Java Spring SQL database AWS Docker",
-    r"\bspring\b": "Spring Java framework REST API microservice",
-    r"\bpython\b": "Python programming data science scripting",
-    r"\bsql\b": "SQL database relational MySQL PostgreSQL",
-    r"\baws\b": "Amazon Web Services AWS cloud deployment",
-    r"\bdocker\b": "Docker container DevOps CI CD",
-    r"\brust\b": "Rust systems programming Linux networking C++",
-    r"\bfull.?stack\b": "Java Spring SQL Angular Docker AWS full-stack",
-    r"\bsales\b": "sales personality OPQ motivation MQ",
-    r"\bleadership\b": "leadership OPQ personality management director",
-    r"\bcontact cent(er|re)\b": "customer service phone simulation call centre SVAR",
-    r"\bcall cent(er|re)\b": "customer service phone simulation contact center SVAR",
-    r"\bhealthcare\b": "HIPAA medical healthcare admin terminology dependability",
-    r"\bhipaa\b": "HIPAA healthcare medical compliance security",
-    r"\bsafety\b": "safety dependability personality DSI industrial manufacturing",
-    r"\baccounting\b": "financial accounting numerical reasoning statistics",
-    r"\bfinance\b": "financial accounting numerical reasoning analyst",
-    r"\badmin\b": "Microsoft Excel Word Office 365 administrative",
-    r"\bexecutive\b": "OPQ leadership personality director executive",
-    r"\bcxo\b": "OPQ leadership personality executive director CXO",
-    r"\bsenior\b": "professional individual contributor senior advanced",
-    r"\bgraduate\b": "graduate entry level scenarios situational judgement",
-    r"\bmanager\b": "manager OPQ personality leadership competency",
-    r"\bnetwork\b": "networking infrastructure Linux systems",
-    r"\bdata analys\b": "data analysis numerical reasoning statistics Excel",
+    r"\bjava\b": "Java programming object-oriented Spring SQL database enterprise",
+    r"\bspring\b": "Spring framework Java REST microservice dependency injection",
+    r"\bpython\b": "Python scripting data processing automation object-oriented",
+    r"\bsql\b": "SQL database querying relational data modelling",
+    r"\baws\b": "cloud infrastructure DevOps deployment scalability",
+    r"\bdocker\b": "containerisation DevOps CI CD orchestration",
+    r"\brust\b": "systems programming memory safety performance low-level",
+    r"\bfull.?stack\b": "frontend backend web development database API integration",
+    r"\bsales\b": "personality motivation persuasion relationship management commercial",
+    r"\bleadership\b": "personality management influence decision-making strategic",
+    r"\bcontact cent(er|re)\b": "customer service communication empathy verbal interpersonal",
+    r"\bcall cent(er|re)\b": "customer service telephone verbal communication interpersonal",
+    r"\bhealthcare\b": "medical clinical care compliance terminology patient-facing",
+    r"\bhipaa\b": "healthcare compliance data privacy medical regulation",
+    r"\bsafety\b": "risk awareness dependability conscientiousness compliance industrial",
+    r"\baccounting\b": "numerical reasoning financial analysis bookkeeping accuracy",
+    r"\bfinance\b": "numerical reasoning quantitative analysis investment financial",
+    r"\badmin\b": "office software spreadsheet document organisation administrative",
+    r"\bexecutive\b": "senior leadership strategy personality judgement board-level",
+    r"\bcxo\b": "executive leadership strategic personality C-suite",
+    r"\bsenior\b": "experienced professional individual contributor advanced expertise",
+    r"\bgraduate\b": "entry level potential aptitude learning agility situational",
+    r"\bmanager\b": "people management leadership personality coaching team",
+    r"\bnetwork\b": "infrastructure systems IT Linux protocols administration",
+    r"\bdata analys\b": "numerical reasoning quantitative data interpretation statistics",
+    r"\bproject manager\b": "planning organisation stakeholder communication delivery",
+    r"\bcustomer service\b": "interpersonal empathy verbal communication service orientation",
 }
 
 
@@ -258,7 +261,21 @@ class HybridRetriever:
         return scores[0], indices[0]
 
     def _bm25_retrieve(self, query: str) -> np.ndarray:
-        tokens = query.lower().split()
+        # Remove common stopwords so rare, meaningful tokens outrank high-frequency noise.
+        _STOPWORDS = {
+            "a", "an", "the", "and", "or", "but", "is", "are", "was", "were",
+            "be", "been", "being", "have", "has", "had", "do", "does", "did",
+            "will", "would", "could", "should", "may", "might", "shall",
+            "to", "of", "in", "for", "on", "with", "at", "by", "from",
+            "this", "that", "these", "those", "it", "its", "i", "we", "they",
+            "he", "she", "you", "me", "us", "them", "my", "our", "their",
+            "what", "who", "how", "which", "when", "where", "about", "into",
+            "need", "want", "hire", "hiring", "looking", "some", "please",
+            "also", "just", "not", "more", "can", "as", "so", "if", "like",
+        }
+        tokens = [t for t in query.lower().split() if t not in _STOPWORDS]
+        if not tokens:
+            tokens = query.lower().split()  # fallback: no filtering
         scores = np.array(self._bm25.get_scores(tokens))
         max_s = scores.max()
         if max_s > 0:
@@ -287,6 +304,9 @@ class HybridRetriever:
             "leadership", "sales", "motivation", "cultural fit"
         ])
 
+        _EXCLUSIVE_RE = re.compile(r"\b(only|just|exclusively|no other|nothing but)\b", re.I)
+        is_exclusive = type_codes is not None and bool(_EXCLUSIVE_RE.search(query))
+
         for eid, score in combined.items():
             item = self._id_to_item.get(eid)
             if not item:
@@ -304,9 +324,12 @@ class HybridRetriever:
             if remote_only and not item["remote"]:
                 multiplier *= 0.5
 
-            # Type code preference (soft boost for match, mild penalty for mismatch)
+            # Type code preference: hard-filter when exclusive, soft-boost otherwise
             if type_codes:
-                if any(tc in item["type_codes"] for tc in type_codes):
+                matches_type = any(tc in item["type_codes"] for tc in type_codes)
+                if is_exclusive and not matches_type:
+                    multiplier = 0.0  # hard exclusion: "only personality tests"
+                elif matches_type:
                     multiplier *= 1.3  # boost matching type
                 else:
                     multiplier *= 0.7  # soft penalty, not hard block

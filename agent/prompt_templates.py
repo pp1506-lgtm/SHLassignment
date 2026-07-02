@@ -69,7 +69,11 @@ Use ONLY the catalog data below to answer. Do not use any knowledge outside this
 
 {items_context}
 
-Respond with JSON: {{"state": "COMPARE", "reply": "...", "recommendations": [], "end_of_conversation": false}}
+Respond with JSON matching this schema:
+{{"state": "COMPARE", "reply": "...", "recommendations": <prior_shortlist_or_empty_array>, "end_of_conversation": false}}
+
+IMPORTANT: If a shortlist was already committed in an earlier turn, repeat it verbatim in \
+"recommendations" so the evaluator always has the most recent shortlist available.
 """
 
 RECOMMENDATION_CONTEXT_PROMPT = """Based on the conversation, recommend the most suitable assessments from the \

@@ -29,12 +29,34 @@ STATE_DONE = "DONE"
 
 MAX_TURNS = 8  # user + assistant combined
 
-# Keywords that signal off-topic or injection attempts
-OFF_TOPIC_PATTERNS = re.compile(
-    r"\b(salary|compensation|legal|lawsuit|discriminat|gdpr|eeoc|"
-    r"ignore previous|disregard|forget instructions|jailbreak|"
-    r"as an ai|you are now|pretend you|act as|override|system prompt|"
-    r"hiring law|background check|immigration|visa|religion|race|gender)\b",
+# Intent-signal patterns that must co-occur with off-topic keywords
+# to prevent false positives on natural hiring phrasing.
+_OFF_TOPIC_INTENT = re.compile(
+    r"(\?|should (i|we)|are (we|i) required|what.s the law|what (is|are) the rule|"
+    r"advise me|tell me (about|how)|can (i|we)|is it legal|what do (i|we) (do|owe))",
+    re.I,
+)
+
+# Injection DIRECTIVE patterns — require an imperative form, not just presence.
+# 'act as' is only injection when followed by a persona-like noun, NOT a structural/
+# relational one (bridge, liaison, intermediary, etc.) used naturally in job descriptions.
+# The pattern uses non-capturing groups and avoids word-boundary issues with lookaheads.
+_INJECTION_DIRECTIVES = re.compile(
+    r"(?:"
+    # "ignore [all/previous/my] [previous/all] instructions"  — flexible word order
+    r"ignore\s+(?:(?:all|previous|my)\s+)+instructions?"
+    r"|disregard\s+(?:all|previous|your|the)\s+instructions?"
+    r"|forget\s+(?:your\s+|all\s+)?(?:instructions?|guidelines?|rules?)"
+    r"|jailbreak"
+    r"|you\s+are\s+now\b"
+    r"|pretend\s+you\s+are\b"
+    # NOTE: 'act as' is handled by the Python function below to correctly
+    # distinguish persona injection from natural job-description phrasing.
+    r"|override\s+(?:your\s+|the\s+)?(?:instructions?|rules?)"
+    r"|new\s+persona\b"
+    r"|system\s+prompt\b"
+    r"|drop\s+(?:all\s+)?restrictions?"
+    r")",
     re.I,
 )
 
@@ -154,27 +176,48 @@ def extract_context(messages: list[dict]) -> ConversationContext:
 
 # ── Intent helpers ─────────────────────────────────────────────────────────────
 
+_OFF_TOPIC_KEYWORDS = re.compile(
+    r"\b(salary|compensation|legal(?! (team|department|role|position|hire|hiring|staff|counsel))"
+    r"|lawsuit|discriminat|gdpr|eeoc|hiring law"
+    r"|background check|immigration|visa status)\b",
+    re.I,
+)
+
+
 def _is_injection(text: str) -> bool:
-    injection_terms = [
-        "ignore previous", "disregard", "forget instructions",
-        "jailbreak", "you are now", "pretend you are", "act as",
-        "override", "system prompt", "new persona",
-    ]
-    tl = text.lower()
-    return any(t in tl for t in injection_terms)
+    """Detect prompt-injection attempts.
+    Requires a *directive form* of the injection keywords, not bare presence.
+    e.g. 'act as a bridge between teams' is NOT injection; 'act as a pirate' IS.
+    """
+    if _INJECTION_DIRECTIVES.search(text):
+        return True
+    # Handle 'act as' separately: only flag when the noun following it is
+    # a persona-like word, not a structural/relational job-description word.
+    _STRUCTURAL_NOUNS = {
+        "bridge", "liaison", "intermediary", "connector", "link",
+        "interface", "conduit", "facilitator", "go-between", "point",
+    }
+    act_as_m = re.search(r"\bact\s+as\s+(?:a\s+|an\s+)?(\w+)", text, re.I)
+    if act_as_m:
+        noun = act_as_m.group(1).lower()
+        if noun not in _STRUCTURAL_NOUNS:
+            return True
+    return False
 
 
 def _is_off_topic(text: str) -> bool:
-    off_topic_terms = [
-        "salary", "compensation", "legal", "lawsuit", "discriminat",
-        "gdpr", "eeoc", "hiring law", "background check",
-        "immigration", "visa status",
-    ]
+    """Return True only when an off-topic keyword co-occurs with an intent signal
+    (a question, directive, or request for advice).  Bare keyword presence in
+    an otherwise-valid hiring context is NOT refused.
+    """
     tl = text.lower()
-    # Allow if it's framed as "what SHL test covers X"
+    # Allow anything explicitly framed as an SHL assessment question
     if "shl" in tl and ("test" in tl or "assessment" in tl):
         return False
-    return any(t in tl for t in off_topic_terms)
+    # Must both match a keyword AND carry an intent signal
+    has_keyword = bool(_OFF_TOPIC_KEYWORDS.search(text))
+    has_intent = bool(_OFF_TOPIC_INTENT.search(text))
+    return has_keyword and has_intent
 
 
 def _extract_job_level(text: str) -> Optional[str]:

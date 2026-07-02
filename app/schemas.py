@@ -33,8 +33,8 @@ class ChatRequest(BaseModel):
     def validate_messages(cls, v: list[Message]) -> list[Message]:
         if not v:
             raise ValueError("messages cannot be empty")
-        if len(v) > 8:
-            raise ValueError("messages cannot exceed 8 turns")
+        # Turn-cap enforcement is handled gracefully in the endpoint,
+        # not here, to avoid returning HTTP 422 instead of a ChatResponse.
         return v
 
 
